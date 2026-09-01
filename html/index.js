@@ -1,72 +1,136 @@
-import init, * as wasm from "./wasm.js"
+import init, * as wasm from "./pkg/wasm.js";
 
-const SCALE = 3
-const WIDTH = 160
-const HEIGHT = 144
+const WIDTH = 160;
+const HEIGHT = 144;
+const SCALE = 3;
 
-let canvas = document.getElementById("canvas")
-canvas.width = WIDTH * SCALE
-canvas.height = HEIGHT * SCALE
+const canvas = document.getElementById("canvas");
+canvas.width = WIDTH * SCALE;
+canvas.height = HEIGHT * SCALE;
 
-let ctx = canvas.getContext("2d")
-ctx.fillStyle = "#FFFFFF"
-ctx.fillRect(0, 0, canvas.width, canvas.height)
+const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = false;
 
-let anim_frame = 0
+const offscreenCanvas = document.createElement("canvas");
+offscreenCanvas.width = WIDTH;
+offscreenCanvas.height = HEIGHT;
+const offscreenCtx = offscreenCanvas.getContext("2d");
 
-async function run() {
-    await init()
-    let gb = new wasm.GB()
+let animFrameId = null;
 
-    document.getElementById("fileinput").addEventListener("change", function (e) {
-        if (anim_frame != 0) {
-            window.cancelAnimationFrame(anime_frame)
-        }
-        
-        let file = e.target.files[0]
-        if(!file) {
-            alert("Failed to read file")
-            return
-        }
+class GameBoyAudio {
+    constructor(sampleRate = 44100) {
+        this.sampleRate = sampleRate;
+        this.audioCtx = null;
+        this.scriptNode = null;
+        this.audioQueue = [];
+    }
 
-        let fr = new FileReader()
-        fr.onload = function (fre) {
-            let buffer = fre.result
-            const rom = new Uint8Array(buffer)
-            gb.load_rom(rom)
+    init() {
+        if (this.audioCtx) return;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        this.audioCtx = new AudioContextClass({ sampleRate: this.sampleRate });
 
-            mainloop(gb)
-        }
+        const bufferSize = 2048;
+        this.scriptNode = this.audioCtx.createScriptProcessor(bufferSize, 0, 2);
 
-        fr.readAsArrayBuffer(file)
-    }, false)
+        this.scriptNode.onaudioprocess = (e) => {
+            const left = e.outputBuffer.getChannelData(0);
+            const right = e.outputBuffer.getChannelData(1);
 
-    document.addEventListener("keydown", function(e) {
-        gb.press_button(e, true)
-    })
-    
-    document.addEventListener("keyup", function(e) {
-        GainNode.press_button(e, false)
-    })
-}
-
-function mainloop(gb) {
-    while (true) {
-        let draw_time = gb.tick()
-        if (draw_time) {
-            gb.draw_screen()
-            if (SCALE != 1) {
-                let ctx = canvas.getContext('2d')
-                ctx.imageSmoothingEnabled = false
-                ctx.drawImage(canvas, 0, 0, WIDTH, HEIGHT, 0, 0, canvas.width, canvas.height)
+            for (let i = 0; i < bufferSize; i++) {
+                if (this.audioQueue.length >= 2) {
+                    left[i] = this.audioQueue.shift();
+                    right[i] = this.audioQueue.shift();
+                } else {
+                    left[i] = 0.0;
+                    right[i] = 0.0;
+                }
             }
+        };
 
-            anim_frame = window.requestAnimationFrame(() => {
-                mainloop(gb)
-            })
-            return
+        this.scriptNode.connect(this.audioCtx.destination);
+    }
+
+    resume() {
+        if (!this.audioCtx) {
+            this.init();
+        }
+        if (this.audioCtx.state === "suspended") {
+            this.audioCtx.resume();
+        }
+    }
+
+    queueSamples(samples) {
+        if (!this.audioCtx || this.audioCtx.state !== "running") return;
+
+        // Cap queue to 100ms to prevent latency build-up
+        const MAX_QUEUE = this.sampleRate * 2 * 0.1;
+        if (this.audioQueue.length > MAX_QUEUE) {
+            this.audioQueue.length = 0;
+        }
+
+        for (let i = 0; i < samples.length; i++) {
+            this.audioQueue.push(samples[i]);
         }
     }
 }
 
-run().catch(console.error)
+async function run() {
+    await init();
+    const gb = new wasm.GB();
+    const audio = new GameBoyAudio(44100);
+
+    // Browser audio policy requires user gesture unlock
+    window.addEventListener("click", () => audio.resume(), { once: true });
+    window.addEventListener("keydown", () => audio.resume(), { once: true });
+
+    const fileInput = document.getElementById("fileinput");
+
+    fileInput.addEventListener("change", (e) => {
+        audio.resume();
+
+        if (animFrameId) {
+            cancelAnimationFrame(animFrameId);
+        }
+
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const rom = new Uint8Array(reader.result);
+            gb.load_rom(rom);
+
+            function loop() {
+                // 1. Advance emulation by 1 frame
+                gb.step_frame();
+
+                // 2. Fetch and queue audio
+                const samples = gb.get_audio_samples();
+                if (samples.length > 0) {
+                    audio.queueSamples(samples);
+                }
+
+                // 3. Render video frame
+                const screenBuffer = gb.get_screen();
+                const clamped = new Uint8ClampedArray(screenBuffer);
+                const imgData = new ImageData(clamped, WIDTH, HEIGHT);
+
+                offscreenCtx.putImageData(imgData, 0, 0);
+                ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
+
+                animFrameId = requestAnimationFrame(loop);
+            }
+
+            animFrameId = requestAnimationFrame(loop);
+        };
+
+        reader.readAsArrayBuffer(file);
+    });
+
+    window.addEventListener("keydown", (e) => gb.press_button(e.key, true));
+    window.addEventListener("keyup", (e) => gb.press_button(e.key, false));
+}
+
+run().catch(console.error);

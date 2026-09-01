@@ -25,22 +25,25 @@ pub enum Interrupts {
 }
 
 pub struct Cpu {
-    pc: u16,
-    sp: u16,
-    a: u8,
-    b: u8,
-    c: u8,
-    d: u8,
-    e: u8,
-    f: u8,
-    h: u8,
-    l: u8,
-    irq_enabled: bool,
-    halted: bool,
-    bus: Bus,
-    last_read: Option<u16>,
-    last_write: Option<u16>,
-    dirty_battery: bool,
+    pub pc: u16,
+    pub sp: u16,
+    pub a: u8,
+    pub b: u8,
+    pub c: u8,
+    pub d: u8,
+    pub e: u8,
+    pub f: u8,
+    pub h: u8,
+    pub l: u8,
+    pub irq_enabled: bool,
+    pub ime_scheduled: bool,
+    pub halted: bool,
+    pub halt_bug: bool,
+    pub bus: Bus,
+    pub last_read: Option<u16>,
+    pub last_write: Option<u16>,
+    pub dirty_battery: bool,
+    pub pending_draw: bool,
 }
 
 impl Interrupts {
@@ -69,14 +72,16 @@ impl Cpu {
             h: 0x01,
             l: 0x4D,
             irq_enabled: false,
+            ime_scheduled: false,
             halted: false,
+            halt_bug: false,
             bus: Bus::new(),
             last_read: None,
             last_write: None,
             dirty_battery: false,
+            pending_draw: false,
         };
 
-        // Hardware register initializations (Post-boot DMG)
         cpu.write_ram(0xFF10, 0x80);
         cpu.write_ram(0xFF11, 0xBF);
         cpu.write_ram(0xFF12, 0xF3);
@@ -98,6 +103,49 @@ impl Cpu {
         cpu.write_ram(0xFF49, 0xFF);
 
         cpu
+    }
+
+    #[inline]
+    pub fn advance_t_cycles(&mut self, t_cycles: u32) {
+        let m_cycles = (t_cycles / 4) as u8;
+        if m_cycles > 0 {
+            let ppu_result = self.bus.update_ppu(m_cycles);
+            if ppu_result.irq {
+                self.enable_irq_type(Interrupts::Stat, true);
+            }
+            if let LcdResults::RenderFrame = ppu_result.lcd_result {
+                self.bus.render_scanline();
+                self.enable_irq_type(Interrupts::Vblank, true);
+                self.pending_draw = true;
+            }
+            if self.bus.update_timer(m_cycles) {
+                self.enable_irq_type(Interrupts::Timer, true);
+            }
+        }
+        // advance apu by exact T-cycles
+        self.bus.update_apu(t_cycles);
+    }
+
+    #[inline]
+    pub fn mem_read(&mut self, addr: u16) -> u8 {
+        self.advance_t_cycles(2);
+        self.last_read = Some(addr);
+        let val = self.bus.read_ram(addr);
+        self.advance_t_cycles(2);
+        val
+    }
+
+    #[inline]
+    pub fn mem_write(&mut self, addr: u16, val: u8) {
+        self.advance_t_cycles(2);
+        self.last_write = Some(addr);
+        self.dirty_battery |= self.bus.write_ram(addr, val);
+        self.advance_t_cycles(2);
+    }
+
+    #[inline]
+    pub fn internal_delay(&mut self) {
+        self.advance_t_cycles(4);
     }
 
     pub fn clean_battery(&mut self) {
@@ -141,7 +189,7 @@ impl Cpu {
         self.bus.set_battery_data(data);
     }
 
-    pub fn get_r8(&self, r: Regs) -> u8 {
+    pub fn get_r8(&mut self, r: Regs) -> u8 {
         match r {
             Regs::A => self.a,
             Regs::B => self.b,
@@ -153,7 +201,7 @@ impl Cpu {
             Regs::L => self.l,
             Regs::HL => {
                 let addr = self.get_r16(Regs16::HL);
-                self.read_ram(addr)
+                self.mem_read(addr)
             }
         }
     }
@@ -165,13 +213,12 @@ impl Cpu {
             Regs::C => self.c = val,
             Regs::D => self.d = val,
             Regs::E => self.e = val,
-            // Bottom 4 bits of F are always 0
             Regs::F => self.f = val & 0xF0,
             Regs::H => self.h = val,
             Regs::L => self.l = val,
             Regs::HL => {
                 let addr = self.get_r16(Regs16::HL);
-                self.write_ram(addr, val);
+                self.mem_write(addr, val);
             }
         }
     }
@@ -191,20 +238,20 @@ impl Cpu {
         let low = val.low_byte();
         match r {
             Regs16::AF => {
-                self.set_r8(Regs::A, high);
-                self.set_r8(Regs::F, low);
+                self.a = high;
+                self.f = low & 0xF0;
             }
             Regs16::BC => {
-                self.set_r8(Regs::B, high);
-                self.set_r8(Regs::C, low);
+                self.b = high;
+                self.c = low;
             }
             Regs16::DE => {
-                self.set_r8(Regs::D, high);
-                self.set_r8(Regs::E, low);
+                self.d = high;
+                self.e = low;
             }
             Regs16::HL => {
-                self.set_r8(Regs::H, high);
-                self.set_r8(Regs::L, low);
+                self.h = high;
+                self.l = low;
             }
             Regs16::SP => self.sp = val,
         }
@@ -238,9 +285,12 @@ impl Cpu {
     }
 
     pub fn fetch(&mut self) -> u8 {
-        self.last_read = Some(self.pc);
-        let val = self.read_ram(self.pc);
-        self.pc = self.pc.wrapping_add(1);
+        let val = self.mem_read(self.pc);
+        if self.halt_bug {
+            self.halt_bug = false;
+        } else {
+            self.pc = self.pc.wrapping_add(1);
+        }
         val
     }
 
@@ -373,16 +423,19 @@ impl Cpu {
     }
 
     pub fn pop(&mut self) -> u16 {
-        let low = self.read_ram(self.sp);
-        let high = self.read_ram(self.sp.wrapping_add(1));
-        self.sp = self.sp.wrapping_add(2);
+        let low = self.mem_read(self.sp);
+        self.sp = self.sp.wrapping_add(1);
+        let high = self.mem_read(self.sp);
+        self.sp = self.sp.wrapping_add(1);
         merge_bytes(high, low)
     }
 
     pub fn push(&mut self, val: u16) {
-        self.sp = self.sp.wrapping_sub(2);
-        self.write_ram(self.sp, val.low_byte());
-        self.write_ram(self.sp.wrapping_add(1), val.high_byte());
+        self.internal_delay();
+        self.sp = self.sp.wrapping_sub(1);
+        self.mem_write(self.sp, (val >> 8) as u8);
+        self.sp = self.sp.wrapping_sub(1);
+        self.mem_write(self.sp, (val & 0xFF) as u8);
     }
 
     pub fn get_pc(&self) -> u16 {
@@ -475,49 +528,67 @@ impl Cpu {
         self.set_r8(reg, byte);
     }
 
-    pub fn set_irq(&mut self, enabled: bool) {
-        self.irq_enabled = enabled;
-    }
-
     pub fn set_halted(&mut self, halted: bool) {
-        self.halted = halted;
+        let if_reg = self.read_ram(IF) & 0x1F;
+        let ie_reg = self.read_ram(IE) & 0x1F;
+
+        if halted {
+            if !self.irq_enabled {
+                if (if_reg & ie_reg) != 0 {
+                    self.halt_bug = true;
+                    self.halted = false;
+                } else {
+                    self.halted = true;
+                }
+            } else {
+                self.halted = true;
+            }
+        } else {
+            self.halted = false;
+        }
     }
 
     pub fn tick(&mut self) -> bool {
         self.last_read = None;
         self.last_write = None;
-        let mut draw_time = false;
-        let cycles = if self.halted { 1 } else { opcodes::execute(self) };
-        let ppu_result = self.bus.update_ppu(cycles);
-        if ppu_result.irq {
-            self.enable_irq_type(Interrupts::Stat, true);
-        }
-        match ppu_result.lcd_result {
-            LcdResults::RenderFrame => {
-                self.bus.render_scanline();
-                self.enable_irq_type(Interrupts::Vblank, true);
-                draw_time = true;
+        self.pending_draw = false;
+
+        if self.halted {
+            self.internal_delay();
+            let if_reg = self.read_ram(IF) & 0x1F;
+            let ie_reg = self.read_ram(IE) & 0x1F;
+            if (if_reg & ie_reg) != 0 {
+                self.halted = false;
             }
-            _ => {}
+        } else {
+            let prev_ime_scheduled = self.ime_scheduled;
+            opcodes::execute(self);
+            if prev_ime_scheduled {
+                self.irq_enabled = true;
+                self.ime_scheduled = false;
+            }
         }
-        let timer_irq = self.bus.update_timer(cycles);
-        if timer_irq {
-            self.enable_irq_type(Interrupts::Timer, true);
-        }
+
         if let Some(irq) = self.check_irq() {
             self.trigger_irq(irq);
         }
-        draw_time
+
+        self.pending_draw
     }
 
     fn check_irq(&mut self) -> Option<Interrupts> {
-        if !self.irq_enabled && !self.halted {
+        if !self.irq_enabled {
             return None;
         }
 
-        let if_reg = self.read_ram(IF);
-        let ie_reg = self.read_ram(IE);
+        let if_reg = self.read_ram(IF) & 0x1F;
+        let ie_reg = self.read_ram(IE) & 0x1F;
         let irq_flags = if_reg & ie_reg;
+
+        if irq_flags == 0 {
+            return None;
+        }
+
         for (i, irq) in IRQ_PRIORITIES.iter().enumerate() {
             if irq_flags.get_bit(i as u8) {
                 return Some(*irq);
@@ -535,21 +606,20 @@ impl Cpu {
             Interrupts::Serial => if_reg.set_bit(3, enabled),
             Interrupts::Joypad => if_reg.set_bit(4, enabled),
         }
-        self.write_ram(IF, if_reg);
+        self.write_ram(IF, if_reg | 0xE0);
     }
 
     fn trigger_irq(&mut self, irq: Interrupts) {
         self.halted = false;
+        self.irq_enabled = false;
+        self.enable_irq_type(irq, false);
 
-        if self.irq_enabled {
-            self.irq_enabled = false;
+        self.internal_delay();
+        self.internal_delay();
 
-            let vector = irq.get_vector();
-            self.push(self.pc);
-            self.set_pc(vector);
-
-            self.enable_irq_type(irq, false);
-        }
+        let vector = irq.get_vector();
+        self.push(self.pc);
+        self.set_pc(vector);
     }
 
     pub fn load_rom(&mut self, rom: &[u8]) {
@@ -563,6 +633,10 @@ impl Cpu {
     pub fn press_button(&mut self, button: Buttons, pressed: bool) {
         self.bus.press_button(button, pressed);
         self.enable_irq_type(Interrupts::Joypad, true);
+    }
+
+    pub fn get_audio_samples(&mut self) -> Vec<f32> {
+        self.bus.apu.sample_buffer.drain(..).collect()
     }
 }
 

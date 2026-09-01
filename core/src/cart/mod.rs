@@ -100,13 +100,13 @@ impl Cart {
         }
         let mut ram_size_idx = self.rom[RAM_SIZE_ADDR] as usize;
 
-        // Some headers do not report their external RAM cap correctly
+        // some headers do not report their external RAM cap correctly
         if self.has_external_ram() && ram_size_idx == 0 {
             ram_size_idx = 1;
         }
 
         if self.mbc == MBC::MBC2 {
-            self.ram = vec![0; 512]; // Always 512 half-bytes of RAM on chip
+            self.ram = vec![0; 512]; // always 512 bytes of ram on chip
         } else if ram_size_idx < RAM_SIZES.len() {
             let ram_size = RAM_SIZES[ram_size_idx] * 1024;
             self.ram = vec![0; ram_size];

@@ -6,3 +6,4 @@ pub mod ppu;
 pub mod utils;
 pub mod wram;
 pub mod timer;
+pub mod apu;

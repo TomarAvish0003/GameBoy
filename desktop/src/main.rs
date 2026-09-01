@@ -6,6 +6,7 @@ use std::process::exit;
 mod debug;
 use crate::debug::Debugger;
 
+use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -35,9 +36,18 @@ fn main() {
     let title = gb.get_title();
     load_battery_save(&mut gb, &title);
 
-    // SDL2 Initialization
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
+    let audio_subsystem = sdl_context.audio().unwrap();
+
+    let desired_spec = AudioSpecDesired {
+        freq: Some(44100),
+        channels: Some(2),
+        samples: Some(1024),
+    };
+
+    let audio_queue: AudioQueue<f32> = audio_subsystem.open_queue(None, &desired_spec).unwrap();
+    audio_queue.resume();
 
     let window = video_subsystem
         .window(
@@ -74,6 +84,12 @@ fn main() {
         }
 
         tick_until_draw(&mut gb, &mut gbd, &title);
+
+        // Drain generated audio samples and queue to the SDL2 audio device
+        let samples = gb.get_audio_samples();
+        if audio_queue.size() < 44100 * 2 {
+            let _ = audio_queue.queue_audio(&samples);
+        }
 
         let frame = gb.render();
         draw_screen(&frame, &mut canvas);

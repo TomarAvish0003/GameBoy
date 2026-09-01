@@ -1,9 +1,12 @@
+use std::io::Write;
+
 use crate::cart::{Cart, EXT_RAM_START, EXT_RAM_STOP, ROM_START, ROM_STOP};
 use crate::io::{Buttons, IO};
 use crate::ppu::PpuUpdateResult;
 use crate::ppu::{Ppu, LCD_REG_START, LCD_REG_STOP, OAM_START, OAM_STOP, VRAM_START, VRAM_STOP};
 use crate::utils::*;
 use crate::wram::{ECHO_STOP, WRAM, WRAM_START};
+use crate::apu::Apu;
 
 const OAM_DMA: u16 = 0xFF46;
 const HRAM_START: u16 = 0xFF80;
@@ -13,10 +16,14 @@ const HRAM_SIZE: usize = (HRAM_STOP - HRAM_START + 1) as usize;
 pub const IO_START: u16 = 0xFF00;
 pub const IO_STOP: u16 = 0xFF7F;
 
+const SB: u16 = 0xFF01;
+const SC: u16 = 0xFF02;
+
 pub struct Bus {
     rom: Cart,
     ppu: Ppu,
     io: IO,
+    pub apu: Apu,
     wram: WRAM,
     hram: [u8; HRAM_SIZE],
 }
@@ -27,6 +34,7 @@ impl Bus {
             rom: Cart::new(),
             ppu: Ppu::new(),
             io: IO::new(),
+            apu: Apu::new(),
             wram: WRAM::new(),
             hram: [0; HRAM_SIZE],
         }
@@ -48,6 +56,8 @@ impl Bus {
             WRAM_START..=ECHO_STOP => self.wram.read_u8(addr),
             OAM_START..=OAM_STOP => self.ppu.read_oam(addr),
             LCD_REG_START..=LCD_REG_STOP => self.ppu.read_lcd_reg(addr),
+            0xFF0F => self.io.read_u8(addr) | 0xE0,
+            0xFF10..=0xFF3F => self.apu.read_u8(addr),
             IO_START..=IO_STOP => self.io.read_u8(addr),
             HRAM_START..=HRAM_STOP => {
                 let relative_addr = addr - HRAM_START;
@@ -85,6 +95,17 @@ impl Bus {
                     self.dma_transfer(val);
                 }
                 self.ppu.write_lcd_reg(addr, val);
+            }
+            0xFF10..=0xFF3F => {
+                self.apu.write_u8(addr, val);
+            }
+            SC => {
+                if val & 0x80 != 0 {
+                    let sb_byte = self.read_ram(SB);
+                    print!("{}", sb_byte as char);
+                    let _ = std::io::stdout().flush();
+                }
+                self.io.write_u8(addr, val);
             }
             IO_START..=IO_STOP => {
                 self.io.write_u8(addr, val);
@@ -132,5 +153,9 @@ impl Bus {
 
     pub fn get_title(&self) -> String {
         self.rom.get_title()
+    }
+
+    pub fn update_apu(&mut self, t_cycles: u32) {
+        self.apu.update(t_cycles);
     }
 }

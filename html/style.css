@@ -1,0 +1,427 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+}
+
+body {
+    background-color: #1a1a1e;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: hidden;
+}
+
+/* ---------------- Drawer UI ---------------- */
+.drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 290px;
+    background: #25252b;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+    z-index: 100;
+    display: flex;
+}
+
+.drawer.open {
+    transform: translateX(0);
+}
+
+.drawer-toggle {
+    position: absolute;
+    right: -42px;
+    top: 20px;
+    width: 42px;
+    height: 42px;
+    background: #25252b;
+    border: none;
+    border-radius: 0 8px 8px 0;
+    color: #f1f1f1;
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 4px 0 8px rgba(0,0,0,0.3);
+}
+
+.drawer-content {
+    padding: 24px 20px;
+    overflow-y: auto;
+    width: 100%;
+}
+
+.drawer-content h2 {
+    font-size: 1.25rem;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #3d3d47;
+    padding-bottom: 8px;
+}
+
+.control-group {
+    margin-bottom: 20px;
+}
+
+.control-group h3 {
+    font-size: 0.9rem;
+    color: #aaa;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.file-label {
+    display: block;
+    background: #4a4a58;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+}
+
+#fileinput {
+    display: none;
+}
+
+.radio-row label, .checkbox-grid label {
+    display: block;
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
+#volume-slider {
+    width: 100%;
+    accent-color: #8b1d3d;
+}
+
+.drawer-tip {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 30px;
+    line-height: 1.4;
+}
+
+/* ---------------- DMG-01 Console Chassis ---------------- */
+.console-wrapper {
+    padding: 20px;
+}
+
+.gameboy {
+    width: 440px;
+    height: 740px;
+    background: #cfceca;
+    border-radius: 16px 16px 60px 16px;
+    box-shadow: 
+        inset 2px 2px 4px rgba(255,255,255,0.7),
+        inset -3px -3px 6px rgba(0,0,0,0.25),
+        10px 15px 30px rgba(0,0,0,0.6);
+    position: relative;
+    padding: 25px 30px;
+    display: flex;
+    flex-direction: column;
+}
+
+.top-grooves {
+    position: absolute;
+    top: 0;
+    left: 40px;
+    right: 40px;
+    height: 8px;
+    border-bottom: 2px solid #b8b6b0;
+    box-shadow: 0 4px 0 #cfceca, 0 6px 0 #b8b6b0;
+}
+
+/* ---------------- Screen Bezel ---------------- */
+.screen-bezel {
+    background: #6e7279;
+    border-radius: 12px 12px 36px 12px;
+    box-shadow: inset 2px 2px 4px rgba(0,0,0,0.4), inset -1px -1px 2px rgba(255,255,255,0.2);
+    padding: 18px 24px 24px;
+    margin-top: 15px;
+}
+
+.bezel-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.stripe {
+    height: 3px;
+    flex: 1;
+}
+
+.stripe.blue { background-color: #001e62; }
+.stripe.magenta { background-color: #8c0032; }
+
+.bezel-title {
+    font-size: 0.58rem;
+    font-weight: bold;
+    color: #cfceca;
+    letter-spacing: 0.5px;
+}
+
+.screen-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.battery-led {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.led-light {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #4a0000;
+    box-shadow: inset 1px 1px 2px rgba(0,0,0,0.6);
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+.led-light.active {
+    background: #ff2a2a;
+    box-shadow: 0 0 6px #ff2a2a, inset 1px 1px 1px rgba(255,255,255,0.8);
+}
+
+.battery-led span {
+    font-size: 0.45rem;
+    color: #aaa;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+#canvas {
+    width: 280px;
+    height: 252px;
+    background: #9bbc0f;
+    image-rendering: pixelated;
+    box-shadow: inset 3px 3px 6px rgba(0,0,0,0.4);
+}
+
+/* ---------------- Branding ---------------- */
+.brand-logo {
+    margin-top: 16px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.brand-nintendo {
+    font-weight: 900;
+    font-size: 0.85rem;
+    color: #20245a;
+    letter-spacing: -0.5px;
+}
+
+.brand-gameboy {
+    font-style: italic;
+    font-weight: 900;
+    font-size: 1.15rem;
+    color: #20245a;
+    letter-spacing: 0.5px;
+}
+
+.trademark {
+    font-size: 0.5rem;
+    vertical-align: super;
+}
+
+/* ---------------- Controls ---------------- */
+.controls-area {
+    margin-top: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* D-Pad */
+.dpad-container {
+    width: 110px;
+    height: 110px;
+    position: relative;
+}
+
+.dpad-btn {
+    position: absolute;
+    background: #111;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dpad-btn:active {
+    box-shadow: 0 1px 0 #000;
+    transform: translateY(2px);
+}
+
+.dpad-btn.up {
+    top: 0; left: 37px; width: 36px; height: 40px;
+    border-radius: 4px 4px 0 0;
+}
+
+.dpad-btn.down {
+    bottom: 0; left: 37px; width: 36px; height: 40px;
+    border-radius: 0 0 4px 4px;
+}
+
+.dpad-btn.left {
+    left: 0; top: 37px; width: 40px; height: 36px;
+    border-radius: 4px 0 0 4px;
+}
+
+.dpad-btn.right {
+    right: 0; top: 37px; width: 40px; height: 36px;
+    border-radius: 0 4px 4px 0;
+}
+
+.dpad-center-indent {
+    position: absolute;
+    left: 37px;
+    top: 37px;
+    width: 36px;
+    height: 36px;
+    background: #111;
+    border-radius: 50%;
+    z-index: 1;
+    pointer-events: none;
+    box-shadow: inset 0 0 4px rgba(0,0,0,0.8);
+}
+
+/* A / B Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 18px;
+    transform: rotate(-25deg);
+    margin-right: 10px;
+}
+
+.action-btn-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.action-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #8b1d3d;
+    border: none;
+    cursor: pointer;
+    box-shadow: 2px 4px 0 #5c0f25;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn:active {
+    box-shadow: 1px 1px 0 #5c0f25;
+    transform: translateY(3px);
+}
+
+.action-label {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #20245a;
+}
+
+/* Start / Select */
+.meta-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 36px;
+    margin-top: 30px;
+}
+
+.meta-btn-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transform: rotate(-25deg);
+}
+
+.pill-btn {
+    width: 54px;
+    height: 14px;
+    background: #8b8984;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 1px 2px 0 #5e5d59;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pill-btn:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+.meta-label {
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: #20245a;
+    letter-spacing: 0.5px;
+}
+
+/* Rebind Badges */
+.key-badge {
+    font-size: 0.58rem;
+    font-weight: bold;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 1px 4px;
+    border-radius: 3px;
+    pointer-events: none;
+}
+
+.binding-active {
+    outline: 2px solid #00f0ff !important;
+    animation: pulse-ring 0.8s infinite alternate ease-in-out;
+}
+
+@keyframes pulse-ring {
+    0% { filter: drop-shadow(0 0 2px #00f0ff); }
+    100% { filter: drop-shadow(0 0 8px #00f0ff); }
+}
+
+/* Speaker Grille */
+.speaker-grille {
+    position: absolute;
+    bottom: 30px;
+    right: 25px;
+    display: flex;
+    gap: 7px;
+    transform: rotate(-25deg);
+}
+
+.grille-slot {
+    width: 6px;
+    height: 55px;
+    background: #111;
+    border-radius: 4px;
+    box-shadow: inset 1px 1px 2px rgba(0,0,0,0.8), 1px 1px 0 rgba(255,255,255,0.4);
+}

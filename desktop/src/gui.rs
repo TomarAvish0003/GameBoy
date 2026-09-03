@@ -25,6 +25,7 @@ pub struct EmulatorUiState {
     pub ch2_enabled: bool,
     pub ch3_enabled: bool,
     pub ch4_enabled: bool,
+    pub show_fps: bool,
 }
 
 impl EmulatorUiState {
@@ -52,6 +53,7 @@ impl EmulatorUiState {
             ch2_enabled: true,
             ch3_enabled: true,
             ch4_enabled: true,
+            show_fps: true,
         }
     }
 
@@ -134,6 +136,8 @@ impl EmulatorUiState {
                         config.frame_limiter = self.frame_limiter;
                         config.save();
                     }
+
+                    ui.checkbox(&mut self.show_fps, "Show FPS Overlay");
 
                     ui.separator();
                     ui.label("Speed:");

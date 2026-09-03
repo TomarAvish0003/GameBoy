@@ -25,8 +25,15 @@ use gb_core::cpu::Cpu;
 use gb_core::utils::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 const MENU_HEIGHT: u32 = 24;
+const GB_FRAME_DURATION: std::time::Duration = std::time::Duration::from_nanos(16_743_000); // 59.7275 FPS
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Elevate Windows kernel timer resolution from 15.6ms down to 1.0ms
+    #[cfg(windows)]
+    unsafe {
+        windows_sys::Win32::Media::timeBeginPeriod(1);
+    }
+
     let args: Vec<_> = env::args().collect();
     let mut config = AppConfig::load();
 
@@ -70,8 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _gl_context = window.gl_create_context()?;
     gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as *const std::ffi::c_void);
 
-    let swap_interval = if config.frame_limiter { 1 } else { 0 };
-    video_subsystem.gl_set_swap_interval(swap_interval).ok();
+    // Disable VSync so our internal pacer controls frame rate dynamically
+    video_subsystem.gl_set_swap_interval(0).ok();
 
     let (mut egui_painter, mut egui_state) =
         egui_sdl2_gl::with_sdl2(&window, ShaderVersion::Default, DpiScaling::Default);
@@ -94,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut current_rom_bytes: Option<Vec<u8>> = None;
     let mut current_title: String = String::new();
-    let mut save_state_slots: Vec<Option<Box<Cpu>>> = vec![None; 9]; // 1-indexed slots 1..=8
+    let mut save_state_slots: Vec<Option<Box<Cpu>>> = vec![None; 9];
 
     if args.len() > 1 {
         let filename = &args[1];
@@ -110,6 +117,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut prev_frame_buffer = vec![Color32::BLACK; (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize)];
     let mut is_fullscreen = false;
     let start_time = Instant::now();
+
+    let mut frame_count: u32 = 0;
+    let mut last_fps_update = Instant::now();
+    let mut current_fps: f32 = 0.0;
+    let mut speed_percentage: f32 = 100.0;
+    let mut next_frame_time = Instant::now() + GB_FRAME_DURATION;
 
     'gameloop: loop {
         egui_state.input.time = Some(start_time.elapsed().as_secs_f64());
@@ -147,7 +160,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         gb.press_button(btn, false);
                     }
                 }
-                // Hold Tab or Space for fast-forward
                 Event::KeyDown {
                     keycode: Some(Keycode::Tab | Keycode::Space),
                     repeat: false,
@@ -176,7 +188,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } if keymod.contains(Mod::LALTMOD) || keymod.contains(Mod::RALTMOD) => {
                     ui_state.toggle_fullscreen = true;
                 }
-                // F1-F8: Load state; Shift + F1-F8: Save state
                 Event::KeyDown {
                     keycode: Some(key),
                     keymod,
@@ -257,7 +268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = window.set_fullscreen(mode);
         }
 
-        // Handle Save State (Slot Cache & saves/<Game>/slot{N}.ss{N})
+        // Handle Save State
         if let Some(slot) = ui_state.save_state_requested.take() {
             if current_rom_bytes.is_some() && (1..=8).contains(&slot) {
                 if !current_title.is_empty() {
@@ -267,7 +278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Handle Load State (Disk fallback to Slot Cache)
+        // Handle Load State
         if let Some(slot) = ui_state.load_state_requested.take() {
             if (1..=8).contains(&slot) {
                 if !current_title.is_empty() {
@@ -294,10 +305,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = window.set_size(new_w, new_h);
             egui_painter.update_screen_rect((new_w, new_h));
         }
-
-        // Frame limiter (forced off if turbo/fast-forward is held)
-        let target_swap = if ui_state.frame_limiter && !ui_state.fast_forward_held { 1 } else { 0 };
-        video_subsystem.gl_set_swap_interval(target_swap).ok();
 
         // Handle ROM selection
         if let Some(path) = ui_state.pending_rom_path.take() {
@@ -328,57 +335,87 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Emulation step with fast-forward frame skipping
+        // Emulation step
         if !ui_state.is_paused && current_rom_bytes.is_some() {
-            // Apply live APU channel mutes
             gb.set_channel_enabled(1, ui_state.ch1_enabled);
             gb.set_channel_enabled(2, ui_state.ch2_enabled);
             gb.set_channel_enabled(3, ui_state.ch3_enabled);
             gb.set_channel_enabled(4, ui_state.ch4_enabled);
 
             let is_turbo = ui_state.fast_forward_held;
+            let is_accelerated = is_turbo || ui_state.speed_multiplier > 1 || ui_state.speed_multiplier == 0;
+
+            // Run 1 frame per loop for accurate 1x/2x/4x pacing, or 4 frames per loop if fast-forwarding
             let frames_to_run = if is_turbo {
                 4
+            } else if ui_state.speed_multiplier == 0 {
+                4
             } else {
-                match ui_state.speed_multiplier {
-                    0 => 4,
-                    s => s.max(1),
-                }
+                1
             };
 
             for frame_idx in 0..frames_to_run {
                 tick_until_draw(&mut gb, &mut gbd, &current_title);
+                frame_count += 1;
 
                 let mut samples = gb.get_audio_samples();
-                if !is_turbo {
+
+                // Only send audio to device at standard 1x speed; clear buffer on turbo/speed-up to avoid clock locking
+                if !is_accelerated {
                     if ui_state.master_volume != 1.0 {
                         for sample in &mut samples {
                             *sample *= ui_state.master_volume;
                         }
                     }
 
-                    if audio_queue.size() < 44100 * 2 {
+                    if audio_queue.size() < 4096 {
                         let _ = audio_queue.queue_audio(&samples);
                     }
                 } else {
-                    // Prevent audio buffer backlog latency during turbo hold
                     audio_queue.clear();
                 }
 
-                // Skip intermediate frame LCD conversions; render only the final frame
                 if frame_idx == frames_to_run - 1 {
                     let frame = gb.render();
-                    let mut p_idx = 0;
-                    for chunk in frame.chunks_exact(4) {
-                        let lum = (chunk[0] as f32 * 0.299 + chunk[1] as f32 * 0.587 + chunk[2] as f32 * 0.114) as u8;
-                        let mapped_color = apply_palette(lum, ui_state.palette);
 
-                        let final_color = if ui_state.lcd_ghosting {
+                    let pal = match ui_state.palette {
+                        ColorPalette::PeaGreen => [
+                            Color32::from_rgb(15, 56, 15),
+                            Color32::from_rgb(48, 98, 48),
+                            Color32::from_rgb(139, 172, 15),
+                            Color32::from_rgb(155, 188, 15),
+                        ],
+                        ColorPalette::Pocket => [
+                            Color32::from_rgb(20, 20, 20),
+                            Color32::from_rgb(86, 86, 86),
+                            Color32::from_rgb(160, 160, 160),
+                            Color32::from_rgb(230, 230, 230),
+                        ],
+                        ColorPalette::Oled => [
+                            Color32::from_rgb(0, 0, 0),
+                            Color32::from_rgb(60, 60, 60),
+                            Color32::from_rgb(170, 170, 170),
+                            Color32::from_rgb(255, 255, 255),
+                        ],
+                    };
+
+                    let use_ghosting = ui_state.lcd_ghosting;
+                    for (p_idx, chunk) in frame.chunks_exact(4).enumerate() {
+                        let lum = ((chunk[0] as u32 * 77 + chunk[1] as u32 * 150 + chunk[2] as u32 * 29) >> 8) as u8;
+                        let shade = match lum {
+                            0..=63 => 0,
+                            64..=127 => 1,
+                            128..=191 => 2,
+                            _ => 3,
+                        };
+                        let mapped_color = pal[shade];
+
+                        let final_color = if use_ghosting {
                             let prev = prev_frame_buffer[p_idx];
                             Color32::from_rgb(
-                                ((mapped_color.r() as f32 * 0.65) + (prev.r() as f32 * 0.35)) as u8,
-                                ((mapped_color.g() as f32 * 0.65) + (prev.g() as f32 * 0.35)) as u8,
-                                ((mapped_color.b() as f32 * 0.65) + (prev.b() as f32 * 0.35)) as u8,
+                                ((mapped_color.r() as u16 * 166 + prev.r() as u16 * 90) >> 8) as u8,
+                                ((mapped_color.g() as u16 * 166 + prev.g() as u16 * 90) >> 8) as u8,
+                                ((mapped_color.b() as u16 * 166 + prev.b() as u16 * 90) >> 8) as u8,
                             )
                         } else {
                             mapped_color
@@ -386,18 +423,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         pixel_buffer[p_idx] = final_color;
                         prev_frame_buffer[p_idx] = final_color;
-                        p_idx += 1;
                     }
 
-                    gb_screen_texture.set(
-                        ColorImage {
-                            size: [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
-                            pixels: pixel_buffer.clone(),
-                        },
-                        TextureOptions::NEAREST,
-                    );
+                    let new_image = ColorImage {
+                        size: [SCREEN_WIDTH as usize, SCREEN_HEIGHT as usize],
+                        pixels: pixel_buffer.clone(),
+                    };
+                    gb_screen_texture.set(new_image, TextureOptions::NEAREST);
                 }
             }
+        }
+
+        // Recalculate FPS every 500ms
+        let elapsed_fps = last_fps_update.elapsed();
+        if elapsed_fps.as_millis() >= 500 {
+            current_fps = (frame_count as f32 * 1000.0) / elapsed_fps.as_millis() as f32;
+            speed_percentage = (current_fps / 59.7275) * 100.0;
+            frame_count = 0;
+            last_fps_update = Instant::now();
         }
 
         // Render egui
@@ -420,6 +463,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.centered_and_justified(|ui| {
                     ui.image(&gb_screen_texture, image_size);
                 });
+
+                if ui_state.show_fps {
+                    let overlay_rect = egui::Rect::from_min_size(
+                        egui::pos2(avail_size.x - 145.0, 32.0),
+                        egui::vec2(135.0, 24.0),
+                    );
+
+                    ui.put(overlay_rect, |ui: &mut egui::Ui| {
+                        let text_color = if (97.0..=103.0).contains(&speed_percentage) {
+                            Color32::from_rgb(57, 255, 20)
+                        } else {
+                            Color32::from_rgb(255, 183, 3)
+                        };
+
+                        egui::Frame::none()
+                            .fill(Color32::from_black_alpha(190))
+                            .rounding(4.0)
+                            .inner_margin(egui::Margin::symmetric(8.0, 4.0))
+                            .show(ui, |ui| {
+                                ui.colored_label(
+                                    text_color,
+                                    format!("{:.1} FPS ({:.0}%)", current_fps, speed_percentage),
+                                )
+                            })
+                            .response
+                    });
+                }
             });
         });
 
@@ -437,6 +507,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         window.gl_swap_window();
+
+        // Speed multiplier-aware hybrid pacer
+        if !ui_state.fast_forward_held && ui_state.speed_multiplier != 0 {
+            let mult = ui_state.speed_multiplier.max(1) as u32;
+            let target_frame_duration = GB_FRAME_DURATION / mult;
+
+            let now = Instant::now();
+            if next_frame_time > now {
+                let remaining = next_frame_time - now;
+                if remaining > std::time::Duration::from_millis(2) {
+                    std::thread::sleep(remaining - std::time::Duration::from_millis(1));
+                }
+                while Instant::now() < next_frame_time {
+                    std::hint::spin_loop();
+                }
+            }
+
+            let finished_at = Instant::now();
+            if finished_at >= next_frame_time {
+                next_frame_time = finished_at + target_frame_duration;
+            } else {
+                next_frame_time += target_frame_duration;
+            }
+        } else {
+            // Uncapped speed / Turbo hold: run free
+            next_frame_time = Instant::now();
+        }
+    }
+
+    #[cfg(windows)]
+    unsafe {
+        windows_sys::Win32::Media::timeEndPeriod(1);
     }
 
     Ok(())
@@ -482,36 +584,6 @@ fn load_state_from_disk(title: &str, slot: usize) -> Option<Box<Cpu>> {
     None
 }
 
-fn apply_palette(lum: u8, palette: ColorPalette) -> Color32 {
-    let shade = match lum {
-        0..=63 => 0,
-        64..=127 => 1,
-        128..=191 => 2,
-        _ => 3,
-    };
-
-    match palette {
-        ColorPalette::PeaGreen => match shade {
-            0 => Color32::from_rgb(15, 56, 15),
-            1 => Color32::from_rgb(48, 98, 48),
-            2 => Color32::from_rgb(139, 172, 15),
-            _ => Color32::from_rgb(155, 188, 15),
-        },
-        ColorPalette::Pocket => match shade {
-            0 => Color32::from_rgb(20, 20, 20),
-            1 => Color32::from_rgb(86, 86, 86),
-            2 => Color32::from_rgb(160, 160, 160),
-            _ => Color32::from_rgb(230, 230, 230),
-        },
-        ColorPalette::Oled => match shade {
-            0 => Color32::from_rgb(0, 0, 0),
-            1 => Color32::from_rgb(60, 60, 60),
-            2 => Color32::from_rgb(170, 170, 170),
-            _ => Color32::from_rgb(255, 255, 255),
-        },
-    }
-}
-
 fn load_rom(path: &str) -> Vec<u8> {
     let mut buffer: Vec<u8> = Vec::new();
     let mut f = File::open(path).expect("Error opening ROM file");
@@ -519,33 +591,52 @@ fn load_rom(path: &str) -> Vec<u8> {
     buffer
 }
 
+static mut LAST_BATTERY_WRITE: Option<Instant> = None;
+
 fn tick_until_draw(gb: &mut Cpu, gbd: &mut Debugger, gamename: &str) {
-    loop {
-        let render = gb.tick();
+    if gbd.is_debugging() {
+        loop {
+            let render = gb.tick();
 
-        gbd.check_exec_breakpoints(gb.get_pc());
-        if let Some(addr) = gb.get_read() {
-            gbd.check_read_breakpoints(addr);
-        }
-        if let Some(addr) = gb.get_write() {
-            gbd.check_write_breakpoints(addr);
-        }
+            gbd.check_exec_breakpoints(gb.get_pc());
+            if let Some(addr) = gb.get_read() {
+                gbd.check_read_breakpoints(addr);
+            }
+            if let Some(addr) = gb.get_write() {
+                gbd.check_write_breakpoints(addr);
+            }
 
-        if gbd.is_debugging() {
-            gbd.print_info();
-            let quit = gbd.debugloop(gb);
-            if quit {
-                exit(0);
+            if gbd.is_debugging() {
+                gbd.print_info();
+                let quit = gbd.debugloop(gb);
+                if quit {
+                    exit(0);
+                }
+            }
+
+            if render {
+                break;
             }
         }
-
-        if render {
-            break;
-        }
+    } else {
+        // Zero-overhead cycle stepping
+        while !gb.tick() {}
     }
 
+    // Battery save throttled to at most once every 2 seconds
     if !gamename.is_empty() && gb.is_battery_dirty() {
-        write_battery_save(gb, gamename);
+        unsafe {
+            let now = Instant::now();
+            let should_write = match LAST_BATTERY_WRITE {
+                Some(prev) => now.duration_since(prev).as_secs() >= 2,
+                None => true,
+            };
+
+            if should_write {
+                write_battery_save(gb, gamename);
+                LAST_BATTERY_WRITE = Some(now);
+            }
+        }
     }
 }
 

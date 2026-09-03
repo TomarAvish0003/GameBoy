@@ -4,7 +4,7 @@
   "master_volume": 1.0,
   "frame_limiter": true,
   "lcd_ghosting": false,
-  "palette": "Oled",
+  "palette": "PeaGreen",
   "recent_roms": [
     "c:\\Repos\\GameBoy\\test\\pokemon_red.gb",
     "C:\\Repos\\GameBoy\\test\\pokemon_red.gb",

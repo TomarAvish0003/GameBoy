@@ -1,6 +1,7 @@
 extern crate wasm_timer;
 use wasm_timer::Instant;
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
 
 const DAY_HIGH_BIT: u8 = 0;
 const HALT_BIT: u8 = 6;
@@ -9,7 +10,9 @@ const SECS_IN_MIN: u64 = 60;
 const MINS_IN_HOUR: u64 = 60;
 const HOURS_IN_DAY: u64 = 24;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Rtc {
+    #[serde(skip, default = "Instant::now")]
     start: Instant,
     seconds: u8,
     minutes: u8,

@@ -1,3 +1,6 @@
+use serde::{Serialize, Deserialize};
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LengthCounter {
     pub length: u16,
     pub max_length: u16,

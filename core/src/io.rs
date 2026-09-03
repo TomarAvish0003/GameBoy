@@ -1,5 +1,7 @@
 use crate::timer::*;
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Buttons {
@@ -29,10 +31,12 @@ const IO_SIZE: usize = (IO_STOP - IO_START + 1) as usize;
 const FACE_SELECT_BIT: u8 = 5;
 const DPAD_SELECT_BIT: u8 = 4;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IO {
     buttons: [bool; 8],
     dpad_selected: bool,
     face_selected: bool,
+    #[serde(with = "BigArray")]
     ram: [u8; IO_SIZE],
     timer: Timer,
 }

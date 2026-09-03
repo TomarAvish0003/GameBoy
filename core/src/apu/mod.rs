@@ -12,6 +12,7 @@ use channel4::Channel4;
 
 use std::collections::VecDeque;
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
 
 const FRAME_SEQUENCER_CYCLES: u32 = 8192; // 512 Hz divider
 const SAMPLE_RATE: u32 = 44100;
@@ -30,6 +31,11 @@ pub const AUDIO_MASKS: [u8; 0x17] = [
     0x00, 0x00, 0x70,             // 0xFF24 - 0xFF26
 ];
 
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Apu {
     pub enabled: bool,
     frame_sequencer: u8,
@@ -45,6 +51,15 @@ pub struct Apu {
 
     sample_timer: f32,
     pub sample_buffer: VecDeque<f32>,
+
+    #[serde(default = "default_true")]
+    pub ch1_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ch2_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ch3_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ch4_enabled: bool,
 }
 
 impl Apu {
@@ -64,6 +79,31 @@ impl Apu {
 
             sample_timer: CYCLES_PER_SAMPLE,
             sample_buffer: VecDeque::with_capacity(4096),
+
+            ch1_enabled: true,
+            ch2_enabled: true,
+            ch3_enabled: true,
+            ch4_enabled: true,
+        }
+    }
+
+    pub fn set_channel_enabled(&mut self, channel: usize, enabled: bool) {
+        match channel {
+            1 => self.ch1_enabled = enabled,
+            2 => self.ch2_enabled = enabled,
+            3 => self.ch3_enabled = enabled,
+            4 => self.ch4_enabled = enabled,
+            _ => {}
+        }
+    }
+
+    pub fn is_channel_enabled(&self, channel: usize) -> bool {
+        match channel {
+            1 => self.ch1_enabled,
+            2 => self.ch2_enabled,
+            3 => self.ch3_enabled,
+            4 => self.ch4_enabled,
+            _ => false,
         }
     }
 
@@ -140,10 +180,10 @@ impl Apu {
             return;
         }
 
-        let s1 = self.ch1.get_sample();
-        let s2 = self.ch2.get_sample();
-        let s3 = self.ch3.get_sample();
-        let s4 = self.ch4.get_sample();
+        let s1 = if self.ch1_enabled { self.ch1.get_sample() } else { 0.0 };
+        let s2 = if self.ch2_enabled { self.ch2.get_sample() } else { 0.0 };
+        let s3 = if self.ch3_enabled { self.ch3.get_sample() } else { 0.0 };
+        let s4 = if self.ch4_enabled { self.ch4.get_sample() } else { 0.0 };
 
         let mut left = 0.0f32;
         let mut right = 0.0f32;

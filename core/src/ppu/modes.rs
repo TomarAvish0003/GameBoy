@@ -1,3 +1,5 @@
+use serde::{Serialize, Deserialize};
+
 const HBLANK_LEN: usize = 204;
 const VBLANK_LEN: usize = 456;
 const OAM_READ_LEN: usize = 80;
@@ -6,7 +8,7 @@ const VBLANK_LINE_START: u8 = 143;
 const VBLANK_LINE: u8 = 144;
 const VBLANK_LINE_END: u8 = VBLANK_LINE_START + 10;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum LcdModeType {
     HBLANK,
     VBLANK,
@@ -32,6 +34,7 @@ impl LcdModeType {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Lcd {
     mode: LcdModeType,
     cycles: usize,

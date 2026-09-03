@@ -1,11 +1,15 @@
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
+
 pub const WRAM_START: u16 = 0xC000;
 pub const WRAM_STOP: u16 = 0xDFFF;
 pub const ECHO_START: u16 = 0xE000;
 pub const ECHO_STOP: u16 = 0xFDFF;
 
 const WRAM_SIZE: usize = (WRAM_STOP - WRAM_START + 1) as usize;
-
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WRAM {
+    #[serde(with = "BigArray")]
     wram: [u8; WRAM_SIZE],
 }
 

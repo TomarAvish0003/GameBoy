@@ -1,6 +1,7 @@
 pub mod rtc;
 use rtc::Rtc;
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
 
 pub const ROM_START: u16 = 0x0000;
 pub const ROM_STOP: u16 = 0x7FFF;
@@ -36,7 +37,7 @@ const RAM_SIZES: [usize; 6] = [
 
 const RAM_SIZE_ADDR: usize = 0x0149;
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum MBC {
     NONE,
     MBC1,
@@ -45,6 +46,7 @@ pub enum MBC {
     MBC5,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Cart {
     rom: Vec<u8>,
     ram: Vec<u8>,

@@ -1,6 +1,7 @@
 use crate::apu::length_counter::LengthCounter;
 use crate::apu::volume_envelope::VolumeEnvelope;
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
 
 const DUTY_PATTERNS: [[bool; 8]; 4] = [
     [false, false, false, false, false, false, false, true],
@@ -9,6 +10,7 @@ const DUTY_PATTERNS: [[bool; 8]; 4] = [
     [false, true, true, true, true, true, true, false],
 ];
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Channel2 {
     pub enabled: bool,
     dac_enabled: bool,

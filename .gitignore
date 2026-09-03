@@ -1,1 +1,5 @@
 test/
+# Emulator save files and states
+saves/
+*.sav
+*.ss[1-8]

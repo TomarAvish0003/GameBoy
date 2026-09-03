@@ -1,6 +1,7 @@
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Tile {
     pub pixel: [[u8; 8]; 8],
 }

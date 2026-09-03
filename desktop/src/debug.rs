@@ -1,4 +1,4 @@
-use std::io::{self, stdin, stdout, Write};
+use std::io::{stdin, stdout, Write};
 use gb_core::cpu::Cpu;
 
 pub struct Debugger {

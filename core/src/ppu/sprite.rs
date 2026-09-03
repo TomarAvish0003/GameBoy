@@ -1,4 +1,5 @@
 use crate::utils::{BitOps, Point};
+use serde::{Serialize, Deserialize};
 
 const BG_PRIORITY_BIT: u8 = 7;
 const Y_FLIP_BIT: u8 = 6;
@@ -7,7 +8,7 @@ const PALETTE_BIT: u8 = 4;
 const Y_OFFSET: isize = 16;
 const X_OFFSET: isize = 8;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Sprite {
     coords: Point,
     tile_num: u8,

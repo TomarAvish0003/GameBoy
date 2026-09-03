@@ -1,3 +1,6 @@
+use serde::{Serialize, Deserialize};
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct VolumeEnvelope {
     pub initial_volume: u8,
     pub current_volume: u8,

@@ -7,6 +7,8 @@ use crate::ppu::{Ppu, LCD_REG_START, LCD_REG_STOP, OAM_START, OAM_STOP, VRAM_STA
 use crate::utils::*;
 use crate::wram::{ECHO_STOP, WRAM, WRAM_START};
 use crate::apu::Apu;
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
 const OAM_DMA: u16 = 0xFF46;
 const HRAM_START: u16 = 0xFF80;
@@ -19,12 +21,14 @@ pub const IO_STOP: u16 = 0xFF7F;
 const SB: u16 = 0xFF01;
 const SC: u16 = 0xFF02;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Bus {
     rom: Cart,
     ppu: Ppu,
     io: IO,
     pub apu: Apu,
     wram: WRAM,
+    #[serde(with = "BigArray")]
     hram: [u8; HRAM_SIZE],
 }
 
@@ -158,4 +162,9 @@ impl Bus {
     pub fn update_apu(&mut self, t_cycles: u32) {
         self.apu.update(t_cycles);
     }
+
+    pub fn set_channel_enabled(&mut self, channel: usize, enabled: bool) {
+        self.apu.set_channel_enabled(channel, enabled);
+    }
+    
 }

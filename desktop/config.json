@@ -1,0 +1,23 @@
+{
+  "scale_factor": 3,
+  "keep_aspect_ratio": true,
+  "master_volume": 1.0,
+  "frame_limiter": true,
+  "lcd_ghosting": false,
+  "palette": "Oled",
+  "recent_roms": [
+    "c:\\Repos\\GameBoy\\test\\pokemon_red.gb",
+    "C:\\Repos\\GameBoy\\test\\pokemon_red.gb",
+    "C:\\Repos\\GameBoy\\test\\tetris.gb"
+  ],
+  "keybinds": {
+    "up": "Up",
+    "down": "Down",
+    "left": "Left",
+    "right": "Right",
+    "a": "Z",
+    "b": "X",
+    "start": "Return",
+    "select": "Space"
+  }
+}

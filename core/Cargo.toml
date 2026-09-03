@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 wasm-timer = "0.2.5"
+serde = { version = "1.0", features = ["derive"]}
+serde-big-array = "0.5"

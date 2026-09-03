@@ -1,3 +1,5 @@
+use serde::{Serialize, Deserialize};
+
 pub const DISPLAY_BUFFER: usize = (SCREEN_WIDTH as usize) * (SCREEN_HEIGHT as usize) * 4;
 
 pub const GB_PALETTE: [[u8; 4]; 4] = [
@@ -89,7 +91,7 @@ impl_bitops!(u16);
 pub const SCREEN_WIDTH: u8 = 160;
 pub const SCREEN_HEIGHT: u8 = 144;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Point {
     pub x: u8,
     pub y: u8,

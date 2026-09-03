@@ -1,6 +1,8 @@
 use crate::apu::length_counter::LengthCounter;
 use crate::utils::BitOps;
+use serde::{Serialize, Deserialize};
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Channel3 {
     pub enabled: bool,
     pub dac_enabled: bool,

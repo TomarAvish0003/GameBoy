@@ -6,6 +6,8 @@ use modes::{Lcd, LcdModeType, LcdResults};
 use tile::Tile;
 use sprite::Sprite;
 use crate::utils::{BitOps, Point, unpack_u8, DISPLAY_BUFFER, GB_PALETTE, SCREEN_HEIGHT, SCREEN_WIDTH};
+use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
 pub const OAM_START: u16 = 0xFE00;
 pub const OAM_STOP: u16 = 0xFE9F;
@@ -66,12 +68,17 @@ pub struct PpuUpdateResult {
     pub irq: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Ppu {
+    #[serde(with = "BigArray")]
     screen_buffer: [u8; DISPLAY_BUFFER],
     mode: Lcd,
+    #[serde(with = "BigArray")]
     tiles: [Tile; NUM_TILES],
+    #[serde(with = "BigArray")]
     maps: [u8; TILE_MAP_SIZE],
     lcd_regs: [u8; LCD_REG_SIZE],
+    #[serde(with = "BigArray")]
     oam: [Sprite; NUM_OAM_SPRITES],
 }
 

@@ -3,6 +3,7 @@ pub mod opcodes;
 use crate::utils::*;
 use crate::ppu::modes::LcdResults;
 use crate::io::Buttons;
+use serde::{Serialize, Deserialize};
 
 const IF: u16 = 0xFF0F;
 const IE: u16 = 0xFFFF;
@@ -24,6 +25,7 @@ pub enum Interrupts {
     Joypad,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Cpu {
     pub pc: u16,
     pub sp: u16,
@@ -638,6 +640,11 @@ impl Cpu {
     pub fn get_audio_samples(&mut self) -> Vec<f32> {
         self.bus.apu.sample_buffer.drain(..).collect()
     }
+
+    pub fn set_channel_enabled(&mut self, channel: usize, enabled: bool) {
+        self.bus.set_channel_enabled(channel, enabled);
+    }
+    
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]

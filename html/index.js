@@ -1,4 +1,4 @@
-import init, * as wasm from "./pkg/wasm.js";
+import init, { GB } from "./pkg/wasm.js";
 import { AudioManager } from "./audio.js";
 
 const WIDTH = 160;
@@ -151,8 +151,9 @@ export function startRebind(btnIdx, buttonElement) {
 }
 
 async function run() {
-    const wasmModule = await init();
-    const gb = new wasm.GB();
+    // init() returns the WebAssembly exports object containing .memory
+    const wasm = await init("./pkg/wasm_bg.wasm");
+    const gb = new GB();
     gbInstance = gb;
 
     const audio = new AudioManager();
@@ -252,7 +253,6 @@ async function run() {
                 const finalPixelData = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
                 const imgData = new ImageData(finalPixelData, WIDTH, HEIGHT);
 
-                // Timing & FPS tracking variables
                 let lastTime = performance.now();
                 let frameAccumulator = 0;
                 let frameCounter = 0;
@@ -265,35 +265,31 @@ async function run() {
                     let delta = now - lastTime;
                     lastTime = now;
 
-                    // Clamp large delta jumps (e.g., user navigated to another browser tab)
                     if (delta > 100) delta = 100;
                     frameAccumulator += delta;
 
                     let stepsRun = 0;
-                    // Step the core in discrete 16.74ms hardware slices
                     while (frameAccumulator >= GB_FRAME_TIME_MS) {
                         gb.step_frame();
                         frameAccumulator -= GB_FRAME_TIME_MS;
                         stepsRun++;
                         frameCounter++;
 
-                        // Audio must be flushed on every emulation frame to stay synchronized
                         const samples = gb.get_audio_samples();
                         if (samples.length > 0) {
                             audio.pushSamples(samples);
                         }
 
-                        // Prevent spiral-of-death slowdown on underpowered devices
                         if (stepsRun >= 4) {
                             frameAccumulator = 0;
                             break;
                         }
                     }
 
-                    // Render screen only when at least one hardware frame has stepped
                     if (stepsRun > 0) {
                         const screenPtr = gb.get_screen_ptr();
-                        const rawWasmPixels = new Uint8Array(wasmModule.memory.buffer, screenPtr, WIDTH * HEIGHT * 4);
+                        // Access memory directly from the initialized WebAssembly exports
+                        const rawWasmPixels = new Uint8Array(wasm.memory.buffer, screenPtr, WIDTH * HEIGHT * 4);
 
                         applyPalette(rawWasmPixels, finalPixelData, currentPalette);
 
@@ -301,14 +297,12 @@ async function run() {
                         ctx.drawImage(offscreenCanvas, 0, 0, canvas.width, canvas.height);
                     }
 
-                    // FPS & Speed calculation (updated every 500ms)
                     const elapsedFps = now - lastFpsUpdate;
                     if (elapsedFps >= 500) {
                         const currentFps = (frameCounter * 1000) / elapsedFps;
                         const speedPercent = ((currentFps / 59.7275) * 100).toFixed(0);
                         if (fpsElem) {
                             fpsElem.innerText = `${currentFps.toFixed(1)} FPS (${speedPercent}%)`;
-                            // Show green when synced, orange/red if drifting
                             fpsElem.style.color = (speedPercent >= 97 && speedPercent <= 103) ? "#39ff14" : "#ffb703";
                         }
                         frameCounter = 0;

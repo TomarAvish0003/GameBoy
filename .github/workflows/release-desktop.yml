@@ -42,7 +42,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rusty-boy-windows.exe
+          name: windows-binary
           path: rusty-boy-windows.exe
 
   create-release:
@@ -54,11 +54,15 @@ jobs:
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: rusty-boy-windows.exe
-          path: .
+          name: windows-binary
+          path: release-dist
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: rusty-boy-windows.exe
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          files: release-dist/rusty-boy-windows.exe
           generate_release_notes: true

@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 gb_core = {path ="../core"}
-sdl2 = { version = "0.35.0", features = ["bundled"] }
+sdl2 = { version = "0.35.0", features = ["bundled", "static-link"] }
 egui = "0.22"
 egui_sdl2_gl = "0.22"
 gl = "0.14"

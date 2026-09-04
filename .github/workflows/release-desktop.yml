@@ -20,15 +20,15 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: desktop.exe
-            asset_name: rusty-boy-windows-x86_64.zip
+            release_file: rusty-boy-windows.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin: desktop
-            asset_name: rusty-boy-linux-x86_64.tar.gz
+            release_file: rusty-boy-linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
             bin: desktop
-            asset_name: rusty-boy-macos-x86_64.tar.gz
+            release_file: rusty-boy-macos-x86_64
 
     steps:
       - name: Checkout repository
@@ -48,22 +48,16 @@ jobs:
       - name: Build Release Binary
         run: cargo build --release --bin desktop --target ${{ matrix.target }}
 
-      - name: Package Windows Artifact
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Prepare Artifact
+        shell: bash
         run: |
-          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.bin }}" -DestinationPath "${{ matrix.asset_name }}"
-
-      - name: Package Unix Artifact
-        if: runner.os != 'Windows'
-        run: |
-          tar -czvf "${{ matrix.asset_name }}" -C "target/${{ matrix.target }}/release" "${{ matrix.bin }}"
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} ${{ matrix.release_file }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}
+          name: ${{ matrix.release_file }}
+          path: ${{ matrix.release_file }}
 
   create-release:
     name: Publish GitHub Release
@@ -75,9 +69,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: artifacts/*
           generate_release_notes: true

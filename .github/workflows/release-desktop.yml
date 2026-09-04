@@ -25,12 +25,19 @@ jobs:
         uses: jwlawson/actions-setup-cmake@v2
 
       - name: Build Release Binary
-        run: cargo build --release --bin desktop
+        run: cargo build --release --manifest-path desktop/Cargo.toml
 
       - name: Copy Executable
         shell: pwsh
         run: |
-          Copy-Item "target/release/desktop.exe" -Destination "rusty-boy-windows.exe"
+          if (Test-Path "desktop/target/release/desktop.exe") {
+            Copy-Item "desktop/target/release/desktop.exe" -Destination "rusty-boy-windows.exe"
+          } elseif (Test-Path "target/release/desktop.exe") {
+            Copy-Item "target/release/desktop.exe" -Destination "rusty-boy-windows.exe"
+          } else {
+            Write-Error "Could not locate desktop.exe output!"
+            exit 1
+          }
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
